@@ -8,14 +8,27 @@ use Illuminate\Support\Facades\Validator;
 
 class PaymentController extends Controller
 {
-    public function index()
+    public function index(Request $req)
     {
-        return apiResponse(Payment::with('order')->get(), 200, 'Get payments successfully...');
+        $payments = Payment::with('order')
+            ->whereHas('order', function ($query) use ($req) {
+                $query->where('user_id', $req->user()->id);
+            })
+            ->get();
+
+        return apiResponse($payments, 200, 'Get payments successfully...');
     }
 
-    public function show($id)
+    public function show(Request $req, $id)
     {
-        return apiResponse(Payment::with('order')->findOrFail($id), 200, 'Get payment successfully...');
+        $payment = Payment::with('order')
+            ->where('id', $id)
+            ->whereHas('order', function ($query) use ($req) {
+                $query->where('user_id', $req->user()->id);
+            })
+            ->firstOrFail();
+
+        return apiResponse($payment, 200, 'Get payment successfully...');
     }
 
     public function store(Request $req)
@@ -32,14 +45,22 @@ class PaymentController extends Controller
         }
 
         $data = $validator->validated();
+
+        $req->user()->orders()->where('id', $data['order_id'])->firstOrFail();
+
         $payment = Payment::create($data);
 
-        return apiResponse($payment, 201, 'Add payment successfully...');
+        return apiResponse($payment->load('order'), 201, 'Add payment successfully...');
     }
 
     public function update(Request $req, $id)
     {
-        $payment = Payment::findOrFail($id);
+        $payment = Payment::where('id', $id)
+            ->whereHas('order', function ($query) use ($req) {
+                $query->where('user_id', $req->user()->id);
+            })
+            ->firstOrFail();
+
         $validator = Validator::make($req->all(), [
             'order_id' => 'sometimes|required|exists:orders,id',
             'payment_method' => 'sometimes|required|string',
@@ -52,14 +73,24 @@ class PaymentController extends Controller
         }
 
         $data = $validator->validated();
+
+        if (array_key_exists('order_id', $data)) {
+            $req->user()->orders()->where('id', $data['order_id'])->firstOrFail();
+        }
+
         $payment->update($data);
 
-        return apiResponse($payment, 200, 'Update payment successfully...');
+        return apiResponse($payment->load('order'), 200, 'Update payment successfully...');
     }
 
-    public function destroy($id)
+    public function destroy(Request $req, $id)
     {
-        Payment::findOrFail($id)->delete();
+        Payment::where('id', $id)
+            ->whereHas('order', function ($query) use ($req) {
+                $query->where('user_id', $req->user()->id);
+            })
+            ->firstOrFail()
+            ->delete();
 
         return apiResponse(null, 200, 'Delete payment successfully...');
     }

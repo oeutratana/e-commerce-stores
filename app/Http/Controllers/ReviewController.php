@@ -8,42 +8,48 @@ use Illuminate\Support\Facades\Validator;
 
 class ReviewController extends Controller
 {
+    // GET /api/reviews  (public)
     public function index()
     {
-        return apiResponse(Review::with(['user', 'product'])->get(), 200, 'Get reviews successfully...');
+        return apiResponse(Review::with(['user', 'product'])->get(), 200, 'Get reviews successfully.');
     }
 
+    // GET /api/reviews/{id}  (public)
     public function show($id)
     {
-        return apiResponse(Review::with(['user', 'product'])->findOrFail($id), 200, 'Get review successfully...');
+        return apiResponse(Review::with(['user', 'product'])->findOrFail($id), 200, 'Get review successfully.');
     }
 
+    // POST /api/reviews  (auth)
     public function store(Request $req)
     {
         $validator = Validator::make($req->all(), [
-            'user_id' => 'required|exists:users,id',
             'product_id' => 'required|exists:products,id',
-            'rating' => 'required|integer|min:1|max:5',
-            'comment' => 'nullable|string',
+            'rating'     => 'required|integer|min:1|max:5',
+            'comment'    => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
             return apiResponse($validator->errors(), 422, 'Validation failed.');
         }
 
-        $data = $validator->validated();
-        $review = Review::create($data);
+        $review = Review::create([
+            'user_id'    => $req->user()->id,
+            'product_id' => $req->product_id,
+            'rating'     => $req->rating,
+            'comment'    => $req->comment,
+        ]);
 
-        return apiResponse($review, 201, 'Add review successfully...');
+        return apiResponse($review->load(['user', 'product']), 201, 'Review added successfully.');
     }
 
+    // PUT /api/reviews/{id}  (auth, own review)
     public function update(Request $req, $id)
     {
-        $review = Review::findOrFail($id);
+        $review = Review::where('id', $id)->where('user_id', $req->user()->id)->firstOrFail();
+
         $validator = Validator::make($req->all(), [
-            'user_id' => 'sometimes|required|exists:users,id',
-            'product_id' => 'sometimes|required|exists:products,id',
-            'rating' => 'sometimes|required|integer|min:1|max:5',
+            'rating'  => 'sometimes|required|integer|min:1|max:5',
             'comment' => 'nullable|string',
         ]);
 
@@ -51,16 +57,15 @@ class ReviewController extends Controller
             return apiResponse($validator->errors(), 422, 'Validation failed.');
         }
 
-        $data = $validator->validated();
-        $review->update($data);
-
-        return apiResponse($review, 200, 'Update review successfully...');
+        $review->update($validator->validated());
+        return apiResponse($review->load(['user', 'product']), 200, 'Review updated successfully.');
     }
 
-    public function destroy($id)
+    // DELETE /api/reviews/{id}  (auth, own review)
+    public function destroy(Request $req, $id)
     {
-        Review::findOrFail($id)->delete();
-
-        return apiResponse(null, 200, 'Delete review successfully...');
+        $review = Review::where('id', $id)->where('user_id', $req->user()->id)->firstOrFail();
+        $review->delete();
+        return apiResponse(null, 200, 'Review deleted successfully.');
     }
 }

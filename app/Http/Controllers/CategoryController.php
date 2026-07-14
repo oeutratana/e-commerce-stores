@@ -6,6 +6,8 @@ use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class CategoryController extends Controller
 {
@@ -26,7 +28,9 @@ class CategoryController extends Controller
 
     public function store(Request $req)
     {
-        $this->normalizeDescriptionField($req);
+        $this->logIncomingPayload('store', $req);
+
+        $this->normalizeInput($req);
 
         $validator = Validator::make($req->all(), [
             'name'        => 'required|string|max:255',
@@ -39,7 +43,7 @@ class CategoryController extends Controller
         }
 
         $data = $validator->validated();
-        $data['description'] = $this->descriptionInput($req);
+        $data['description'] = $this->resolveDescription($req);
 
         if ($req->hasFile('image')) {
             $data['image'] = $this->saveImage($req);
@@ -53,7 +57,9 @@ class CategoryController extends Controller
     {
         $category = Category::findOrFail($id);
 
-        $this->normalizeDescriptionField($req);
+        $this->logIncomingPayload('update', $req);
+
+        $this->normalizeInput($req);
 
         $validator = Validator::make($req->all(), [
             'name'        => 'sometimes|required|string|max:255',
@@ -67,12 +73,12 @@ class CategoryController extends Controller
 
         $data = $validator->validated();
 
-        if ($this->hasDescriptionInput($req)) {
-            $data['description'] = $this->descriptionInput($req);
+        if ($req->has('description') || $req->has('descriptin')) {
+            $data['description'] = $this->resolveDescription($req);
         }
 
         if ($req->hasFile('image')) {
-            // Optional: Delete old physical image file before saving new one
+            // Delete old physical image file before saving new one
             if ($category->image && File::exists(public_path($category->image))) {
                 File::delete(public_path($category->image));
             }
@@ -96,51 +102,99 @@ class CategoryController extends Controller
         return apiResponse(null, 200, 'Delete category successfully...');
     }
 
+    /**
+     * Save the uploaded image with a safe, collision-free filename
+     * and return the relative path stored on the model.
+     */
     private function saveImage(Request $req): string
     {
-        $file     = $req->file('image');
-        $filename = time() . '-' . $file->getClientOriginalName();
-        $file->move(public_path('image'), $filename);
+        $file      = $req->file('image');
+        $extension = $file->getClientOriginalExtension() ?: $file->extension();
+        $filename  = time() . '-' . Str::random(8) . '.' . $extension;
+
+        $destination = public_path('image');
+        if (!File::exists($destination)) {
+            File::makeDirectory($destination, 0755, true);
+        }
+
+        $file->move($destination, $filename);
 
         return 'image/' . $filename;
     }
 
-    private function normalizeDescriptionField(Request $req): void
+    /**
+     * Pull the value directly out of every layer Laravel exposes
+     * request data through, in priority order. This is a defensive
+     * fallback for cases where validated()/all() unexpectedly doesn't
+     * carry a field through.
+     */
+    private function resolveDescription(Request $req)
     {
-        if (!$req->has('description') && $this->hasDescriptionInput($req)) {
-            $req->merge([
-                'description' => $this->descriptionInput($req),
-            ]);
-        }
-    }
+        $candidates = [
+            $req->post('description'),
+            $req->input('description'),
+            $req->request->get('description'),
+            $req->input('descriptin'),
+        ];
 
-    private function hasDescriptionInput(Request $req): bool
-    {
-        foreach ($this->descriptionKeys() as $key) {
-            if ($req->has($key)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private function descriptionInput(Request $req): ?string
-    {
-        foreach ($this->descriptionKeys() as $key) {
-            if ($req->has($key)) {
-                return $req->input($key);
+        foreach ($candidates as $value) {
+            if (is_string($value) && trim($value) !== '') {
+                return trim($value);
             }
         }
 
         return null;
     }
 
-    private function descriptionKeys(): array
+    /**
+     * TEMPORARY diagnostic logging - remove once resolved. Writes to
+     * storage/logs/laravel.log so we can see exactly what Laravel
+     * receives for a failing request.
+     */
+    private function logIncomingPayload($action, Request $req)
     {
-        return [
-            'descriptin',
-        ];
+        Log::info('CategoryController@' . $action . ' incoming payload', [
+            'all'          => $req->all(),
+            'post_bag'     => $req->request->all(),
+            'has_desc'     => $req->has('description'),
+            'input_desc'   => $req->input('description'),
+            'content_type' => $req->header('Content-Type'),
+        ]);
+    }
+
+    /**
+     * Normalize incoming request keys so that stray whitespace or
+     * inconsistent casing (e.g. "Description ", "DESCRIPTION") still
+     * map correctly onto the fields the validator expects.
+     *
+     * This replaces the previous "check a list of possible typo keys"
+     * approach, which only covered one hardcoded typo and silently
+     * failed for anything else (including plain whitespace issues).
+     */
+    private function normalizeInput(Request $req): void
+    {
+        $all = $req->all();
+        $normalized = [];
+
+        foreach ($all as $key => $value) {
+            $cleanKey = strtolower(trim($key));
+            $normalized[$cleanKey] = is_string($value) ? trim($value) : $value;
+        }
+
+        // Only merge back the fields we actually care about validating,
+        // so we don't clobber file inputs or unrelated keys.
+        $fieldsToNormalize = ['name', 'description'];
+        $merge = [];
+
+        foreach ($fieldsToNormalize as $field) {
+            if (array_key_exists($field, $normalized)) {
+                $merge[$field] = $normalized[$field];
+            }
+        }
+
+        if (!empty($merge)) {
+            $req->merge($merge);
+        }
     }
 
     private function categoryResponse(Category $category): array

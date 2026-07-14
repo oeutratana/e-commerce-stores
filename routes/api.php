@@ -25,17 +25,22 @@ Route::get('/', function () {
 // Public Routes (No Auth Required)
 // ─────────────────────────────────────────────
 Route::post('/register', [UserController::class, 'register']);
-Route::post('/login', [UserController::class, 'login']);
+Route::post('/login',    [UserController::class, 'login']);
 
-// Public read-only
-Route::apiResource('categories', CategoryController::class)->only(['index', 'show']);
-Route::apiResource('products', ProductController::class)->only(['index', 'show']);
-Route::apiResource('reviews', ReviewController::class)->only(['index', 'show']);
+Route::post('/addCategory', [CategoryController::class, 'store']);
+Route::post('/addProduct',  [ProductController::class, 'store']);
+
+Route::apiResource('categories', CategoryController::class);
+Route::apiResource('products',   ProductController::class);
+Route::apiResource('reviews',    ReviewController::class)->only(['index', 'show']);
 
 // ─────────────────────────────────────────────
 // Authenticated Routes (Any logged-in user)
 // ─────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
+
+    // Profile
+    Route::get('/profile', [UserController::class, 'profile']);
 
     // Cart
     Route::apiResource('carts', CartController::class);
@@ -49,11 +54,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Payments
     Route::apiResource('payments', PaymentController::class);
 
-    // Reviews (create, update, delete — own reviews)
+    // Reviews (write)
     Route::apiResource('reviews', ReviewController::class)->except(['index', 'show']);
-
-    // Current logged-in user profile
-    Route::get('/profile', [UserController::class, 'getUser']);
 });
 
 // ─────────────────────────────────────────────
@@ -61,13 +63,7 @@ Route::middleware('auth:sanctum')->group(function () {
 // ─────────────────────────────────────────────
 Route::middleware(['auth:sanctum', 'admin'])->group(function () {
 
-    // Manage Categories (create, update, delete)
-    Route::apiResource('categories', CategoryController::class)->except(['index', 'show']);
-
-    // Manage Products (create, update, delete)
-    Route::apiResource('products', ProductController::class)->except(['index', 'show']);
-
     // User Management
-    Route::get('/users', [UserController::class, 'getUser']);
+    Route::get('/users',      [UserController::class, 'getUser']);
     Route::get('/users/{id}', [UserController::class, 'getUserById']);
 });

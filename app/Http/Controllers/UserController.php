@@ -52,6 +52,11 @@ class UserController extends Controller
         return apiResponse($user,200,'Login successfully.');
     }
 
+    public function profile(Request $req)
+    {
+        return apiResponse($req->user(), 200, 'Get profile successfully.');
+    }
+
     public function getUser(){
         $data=User::all();
         return apiResponse($data,200,'Get data successfully...');

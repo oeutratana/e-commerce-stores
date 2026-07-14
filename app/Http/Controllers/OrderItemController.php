@@ -8,14 +8,27 @@ use Illuminate\Support\Facades\Validator;
 
 class OrderItemController extends Controller
 {
-    public function index()
+    public function index(Request $req)
     {
-        return apiResponse(OrderItem::with(['order', 'product'])->get(), 200, 'Get order items successfully...');
+        $orderItems = OrderItem::with(['order', 'product'])
+            ->whereHas('order', function ($query) use ($req) {
+                $query->where('user_id', $req->user()->id);
+            })
+            ->get();
+
+        return apiResponse($orderItems, 200, 'Get order items successfully...');
     }
 
-    public function show($id)
+    public function show(Request $req, $id)
     {
-        return apiResponse(OrderItem::with(['order', 'product'])->findOrFail($id), 200, 'Get order item successfully...');
+        $orderItem = OrderItem::with(['order', 'product'])
+            ->where('id', $id)
+            ->whereHas('order', function ($query) use ($req) {
+                $query->where('user_id', $req->user()->id);
+            })
+            ->firstOrFail();
+
+        return apiResponse($orderItem, 200, 'Get order item successfully...');
     }
 
     public function store(Request $req)
@@ -23,8 +36,8 @@ class OrderItemController extends Controller
         $validator = Validator::make($req->all(), [
             'order_id' => 'required|exists:orders,id',
             'product_id' => 'required|exists:products,id',
-            'quantity' => 'required|integer',
-            'price' => 'required|numeric',
+            'quantity' => 'required|integer|min:1',
+            'price' => 'required|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -32,19 +45,27 @@ class OrderItemController extends Controller
         }
 
         $data = $validator->validated();
+
+        $req->user()->orders()->where('id', $data['order_id'])->firstOrFail();
+
         $orderItem = OrderItem::create($data);
 
-        return apiResponse($orderItem, 201, 'Add order item successfully...');
+        return apiResponse($orderItem->load(['order', 'product']), 201, 'Add order item successfully...');
     }
 
     public function update(Request $req, $id)
     {
-        $orderItem = OrderItem::findOrFail($id);
+        $orderItem = OrderItem::where('id', $id)
+            ->whereHas('order', function ($query) use ($req) {
+                $query->where('user_id', $req->user()->id);
+            })
+            ->firstOrFail();
+
         $validator = Validator::make($req->all(), [
             'order_id' => 'sometimes|required|exists:orders,id',
             'product_id' => 'sometimes|required|exists:products,id',
-            'quantity' => 'sometimes|required|integer',
-            'price' => 'sometimes|required|numeric',
+            'quantity' => 'sometimes|required|integer|min:1',
+            'price' => 'sometimes|required|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
@@ -52,14 +73,24 @@ class OrderItemController extends Controller
         }
 
         $data = $validator->validated();
+
+        if (array_key_exists('order_id', $data)) {
+            $req->user()->orders()->where('id', $data['order_id'])->firstOrFail();
+        }
+
         $orderItem->update($data);
 
-        return apiResponse($orderItem, 200, 'Update order item successfully...');
+        return apiResponse($orderItem->load(['order', 'product']), 200, 'Update order item successfully...');
     }
 
-    public function destroy($id)
+    public function destroy(Request $req, $id)
     {
-        OrderItem::findOrFail($id)->delete();
+        OrderItem::where('id', $id)
+            ->whereHas('order', function ($query) use ($req) {
+                $query->where('user_id', $req->user()->id);
+            })
+            ->firstOrFail()
+            ->delete();
 
         return apiResponse(null, 200, 'Delete order item successfully...');
     }

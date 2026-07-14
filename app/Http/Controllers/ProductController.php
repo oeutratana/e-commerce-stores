@@ -9,90 +9,66 @@ use Illuminate\Support\Facades\Validator;
 
 class ProductController extends Controller
 {
+    // GET /api/products  (public)
     public function index()
     {
-        $products = Product::with(['category', 'user'])->get();
-
-        return apiResponse($products, 200, 'Get products successfully...');
+        return apiResponse(Product::with(['category', 'user'])->get(), 200, 'Get products successfully.');
     }
 
+    // GET /api/products/{id}  (public)
     public function show($id)
     {
-        $product = Product::with(['category', 'user'])->findOrFail($id);
-
-        return apiResponse($product, 200, 'Get product successfully...');
+        return apiResponse(Product::with(['category', 'user'])->findOrFail($id), 200, 'Get product successfully.');
     }
 
+    // POST /api/products
     public function store(Request $req)
     {
-        $data = $req->all();
-
-        if ($req->filled('pro_name') && ! $req->filled('name')) {
-            $data['name'] = $req->input('pro_name');
-        }
-
-        if ($req->filled('cat_id') && ! $req->filled('category_id')) {
-            $data['category_id'] = $req->input('cat_id');
-        }
-
-        $validator = Validator::make($data, [
+        $validator = Validator::make($req->all(), [
             'category_id' => 'required|exists:categories,id',
-            'user_id' => 'required|exists:users,id',
-            'name' => 'required',
-            'description' => 'nullable',
-            'price' => 'required|numeric',
-            'stock' => 'required|integer',
-            'image' => 'nullable|image|max:2048',
-        ], [
-            'category_id.exists' => 'The selected category does not exist. Create a category first or use an existing category id.',
-            'user_id.exists' => 'The selected user does not exist. Register a user first or use an existing user id.',
+            'user_id'     => 'required|exists:users,id',
+            'name'        => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'price'       => 'required|numeric|min:0',
+            'stock'       => 'required|integer|min:0',
+            'image'       => 'nullable|image|max:2048',
         ]);
 
         if ($validator->fails()) {
             return apiResponse($validator->errors(), 422, 'Validation failed.');
         }
 
-        $product = $validator->validated();
+        $data = $validator->validated();
 
-        if ($req->hasFile('image')) {
-            $product['image'] = $this->saveImage($req);
+        $existingProduct = Product::where('user_id', $data['user_id'])
+            ->where('category_id', $data['category_id'])
+            ->where('name', $data['name'])
+            ->first();
+
+        if ($existingProduct) {
+            return apiResponse($existingProduct->load(['category', 'user']), 200, 'Product already exists.');
         }
 
-        $product = Product::create($product);
+        if ($req->hasFile('image')) {
+            $data['image'] = $this->saveImage($req);
+        }
 
-        return apiResponse($product,201,'Add product successfully...');
+        $product = Product::create($data);
+        return apiResponse($product->load(['category', 'user']), 201, 'Product created successfully.');
     }
 
-    public function addProduct(Request $req)
-    {
-        return $this->store($req);
-    }
-
+    // PUT /api/products/{id}  (admin)
     public function update(Request $req, $id)
     {
         $product = Product::findOrFail($id);
 
-        $data = $req->all();
-
-        if ($req->filled('pro_name') && ! $req->filled('name')) {
-            $data['name'] = $req->input('pro_name');
-        }
-
-        if ($req->filled('cat_id') && ! $req->filled('category_id')) {
-            $data['category_id'] = $req->input('cat_id');
-        }
-
-        $validator = Validator::make($data, [
+        $validator = Validator::make($req->all(), [
             'category_id' => 'sometimes|required|exists:categories,id',
-            'user_id' => 'sometimes|required|exists:users,id',
-            'name' => 'sometimes|required',
-            'description' => 'nullable',
-            'price' => 'sometimes|required|numeric',
-            'stock' => 'sometimes|required|integer',
-            'image' => 'nullable|image|max:2048',
-        ], [
-            'category_id.exists' => 'The selected category does not exist. Create a category first or use an existing category id.',
-            'user_id.exists' => 'The selected user does not exist. Register a user first or use an existing user id.',
+            'name'        => 'sometimes|required|string|max:255',
+            'description' => 'nullable|string',
+            'price'       => 'sometimes|required|numeric|min:0',
+            'stock'       => 'sometimes|required|integer|min:0',
+            'image'       => 'nullable|image|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -105,15 +81,14 @@ class ProductController extends Controller
             if ($product->image && File::exists(public_path($product->image))) {
                 File::delete(public_path($product->image));
             }
-
             $data['image'] = $this->saveImage($req);
         }
 
         $product->update($data);
-
-        return apiResponse($product, 200, 'Update product successfully...');
+        return apiResponse($product->load(['category', 'user']), 200, 'Product updated successfully.');
     }
 
+    // DELETE /api/products/{id}  (admin)
     public function destroy($id)
     {
         $product = Product::findOrFail($id);
@@ -123,16 +98,14 @@ class ProductController extends Controller
         }
 
         $product->delete();
-
-        return apiResponse(null, 200, 'Delete product successfully...');
+        return apiResponse(null, 200, 'Product deleted successfully.');
     }
 
     private function saveImage(Request $req): string
     {
-        $file = $req->file('image');
-        $filename = time().'-'.$file->getClientOriginalName();
+        $file     = $req->file('image');
+        $filename = time() . '-' . $file->getClientOriginalName();
         $file->move(public_path('image'), $filename);
-
-        return 'image/'.$filename;
+        return 'image/' . $filename;
     }
 }
