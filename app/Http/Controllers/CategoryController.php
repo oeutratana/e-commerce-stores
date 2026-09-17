@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class CategoryController extends Controller
@@ -23,6 +23,7 @@ class CategoryController extends Controller
     public function show($id)
     {
         $category = Category::findOrFail($id);
+
         return apiResponse($this->categoryResponse($category), 200, 'Get category successfully...');
     }
 
@@ -33,9 +34,9 @@ class CategoryController extends Controller
         $this->normalizeInput($req);
 
         $validator = Validator::make($req->all(), [
-            'name'        => 'required|string|max:255',
+            'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'image'       => 'nullable|image|max:2048',
+            'image' => $req->hasFile('image') ? 'image|max:2048' : 'nullable|url|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -47,9 +48,12 @@ class CategoryController extends Controller
 
         if ($req->hasFile('image')) {
             $data['image'] = $this->saveImage($req);
+        } elseif (! empty(trim((string) $req->input('image')))) {
+            $data['image'] = trim((string) $req->input('image'));
         }
 
         $category = Category::create($data);
+
         return apiResponse($this->categoryResponse($category), 201, 'Add category successfully...');
     }
 
@@ -62,9 +66,9 @@ class CategoryController extends Controller
         $this->normalizeInput($req);
 
         $validator = Validator::make($req->all(), [
-            'name'        => 'sometimes|required|string|max:255',
+            'name' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string',
-            'image'       => 'nullable|image|max:2048',
+            'image' => $req->hasFile('image') ? 'image|max:2048' : 'nullable|url|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -83,9 +87,12 @@ class CategoryController extends Controller
                 File::delete(public_path($category->image));
             }
             $data['image'] = $this->saveImage($req);
+        } elseif (! empty(trim((string) $req->input('image')))) {
+            $data['image'] = trim((string) $req->input('image'));
         }
 
         $category->update($data);
+
         return apiResponse($this->categoryResponse($category), 200, 'Update category successfully...');
     }
 
@@ -99,6 +106,7 @@ class CategoryController extends Controller
         }
 
         $category->delete();
+
         return apiResponse(null, 200, 'Delete category successfully...');
     }
 
@@ -108,18 +116,18 @@ class CategoryController extends Controller
      */
     private function saveImage(Request $req): string
     {
-        $file      = $req->file('image');
+        $file = $req->file('image');
         $extension = $file->getClientOriginalExtension() ?: $file->extension();
-        $filename  = time() . '-' . Str::random(8) . '.' . $extension;
+        $filename = time().'-'.Str::random(8).'.'.$extension;
 
         $destination = public_path('image');
-        if (!File::exists($destination)) {
+        if (! File::exists($destination)) {
             File::makeDirectory($destination, 0755, true);
         }
 
         $file->move($destination, $filename);
 
-        return 'image/' . $filename;
+        return 'image/'.$filename;
     }
 
     /**
@@ -153,11 +161,11 @@ class CategoryController extends Controller
      */
     private function logIncomingPayload($action, Request $req)
     {
-        Log::info('CategoryController@' . $action . ' incoming payload', [
-            'all'          => $req->all(),
-            'post_bag'     => $req->request->all(),
-            'has_desc'     => $req->has('description'),
-            'input_desc'   => $req->input('description'),
+        Log::info('CategoryController@'.$action.' incoming payload', [
+            'all' => $req->all(),
+            'post_bag' => $req->request->all(),
+            'has_desc' => $req->has('description'),
+            'input_desc' => $req->input('description'),
             'content_type' => $req->header('Content-Type'),
         ]);
     }
@@ -192,7 +200,7 @@ class CategoryController extends Controller
             }
         }
 
-        if (!empty($merge)) {
+        if (! empty($merge)) {
             $req->merge($merge);
         }
     }
@@ -200,12 +208,16 @@ class CategoryController extends Controller
     private function categoryResponse(Category $category): array
     {
         return [
-            'id'          => $category->id,
-            'name'        => $category->name,
+            'id' => $category->id,
+            'name' => $category->name,
             'description' => $category->description,
-            'image'       => $category->image ? asset($category->image) : null,
-            'created_at'  => $category->created_at,
-            'updated_at'  => $category->updated_at,
+            'image' => $category->image
+                ? ((str_starts_with($category->image, 'http://') || str_starts_with($category->image, 'https://'))
+                    ? $category->image
+                    : asset($category->image))
+                : null,
+            'created_at' => $category->created_at,
+            'updated_at' => $category->updated_at,
         ];
     }
 }

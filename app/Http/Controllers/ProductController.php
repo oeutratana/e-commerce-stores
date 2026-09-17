@@ -12,13 +12,19 @@ class ProductController extends Controller
     // GET /api/products  (public)
     public function index()
     {
-        return apiResponse(Product::with(['category', 'user'])->get(), 200, 'Get products successfully.');
+        $products = Product::with(['category', 'user', 'variants'])->get()->map(function ($product) {
+            return $this->productResponse($product);
+        });
+
+        return apiResponse($products, 200, 'Get products successfully.');
     }
 
     // GET /api/products/{id}  (public)
     public function show($id)
     {
-        return apiResponse(Product::with(['category', 'user'])->findOrFail($id), 200, 'Get product successfully.');
+        $product = Product::with(['category', 'user', 'variants'])->findOrFail($id);
+
+        return apiResponse($this->productResponse($product), 200, 'Get product successfully.');
     }
 
     // POST /api/products
@@ -26,12 +32,11 @@ class ProductController extends Controller
     {
         $validator = Validator::make($req->all(), [
             'category_id' => 'required|exists:categories,id',
-            'user_id'     => 'required|exists:users,id',
-            'name'        => 'required|string|max:255',
+            'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'price'       => 'required|numeric|min:0',
-            'stock'       => 'required|integer|min:0',
-            'image'       => 'nullable|image|max:2048',
+            'price' => 'required|numeric|min:0',
+            'stock' => 'required|integer|min:0',
+            'image' => $req->hasFile('image') ? 'image|max:2048' : 'nullable|url|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -39,6 +44,7 @@ class ProductController extends Controller
         }
 
         $data = $validator->validated();
+        $data['user_id'] = $req->user()->id;
 
         $existingProduct = Product::where('user_id', $data['user_id'])
             ->where('category_id', $data['category_id'])
@@ -46,15 +52,18 @@ class ProductController extends Controller
             ->first();
 
         if ($existingProduct) {
-            return apiResponse($existingProduct->load(['category', 'user']), 200, 'Product already exists.');
+            return apiResponse($this->productResponse($existingProduct->load(['category', 'user', 'variants'])), 200, 'Product already exists.');
         }
 
         if ($req->hasFile('image')) {
             $data['image'] = $this->saveImage($req);
+        } elseif (! empty(trim((string) $req->input('image')))) {
+            $data['image'] = trim((string) $req->input('image'));
         }
 
         $product = Product::create($data);
-        return apiResponse($product->load(['category', 'user']), 201, 'Product created successfully.');
+
+        return apiResponse($this->productResponse($product->load(['category', 'user', 'variants'])), 201, 'Product created successfully.');
     }
 
     // PUT /api/products/{id}  (admin)
@@ -64,11 +73,11 @@ class ProductController extends Controller
 
         $validator = Validator::make($req->all(), [
             'category_id' => 'sometimes|required|exists:categories,id',
-            'name'        => 'sometimes|required|string|max:255',
+            'name' => 'sometimes|required|string|max:255',
             'description' => 'nullable|string',
-            'price'       => 'sometimes|required|numeric|min:0',
-            'stock'       => 'sometimes|required|integer|min:0',
-            'image'       => 'nullable|image|max:2048',
+            'price' => 'sometimes|required|numeric|min:0',
+            'stock' => 'sometimes|required|integer|min:0',
+            'image' => $req->hasFile('image') ? 'image|max:2048' : 'nullable|url|max:2048',
         ]);
 
         if ($validator->fails()) {
@@ -82,10 +91,13 @@ class ProductController extends Controller
                 File::delete(public_path($product->image));
             }
             $data['image'] = $this->saveImage($req);
+        } elseif (! empty(trim((string) $req->input('image')))) {
+            $data['image'] = trim((string) $req->input('image'));
         }
 
         $product->update($data);
-        return apiResponse($product->load(['category', 'user']), 200, 'Product updated successfully.');
+
+        return apiResponse($this->productResponse($product->load(['category', 'user', 'variants'])), 200, 'Product updated successfully.');
     }
 
     // DELETE /api/products/{id}  (admin)
@@ -98,14 +110,39 @@ class ProductController extends Controller
         }
 
         $product->delete();
+
         return apiResponse(null, 200, 'Product deleted successfully.');
+    }
+
+    private function productResponse(Product $product): array
+    {
+        return [
+            'id' => $product->id,
+            'category_id' => $product->category_id,
+            'user_id' => $product->user_id,
+            'name' => $product->name,
+            'description' => $product->description,
+            'price' => $product->price,
+            'stock' => $product->stock,
+            'image' => $product->image
+                ? ((str_starts_with($product->image, 'http://') || str_starts_with($product->image, 'https://'))
+                    ? $product->image
+                    : asset($product->image))
+                : null,
+            'category' => $product->relationLoaded('category') ? $product->category : null,
+            'user' => $product->relationLoaded('user') ? $product->user : null,
+            'created_at' => $product->created_at,
+            'updated_at' => $product->updated_at,
+            'variants' => $product->relationLoaded('variants') ? $product->variants : null,
+        ];
     }
 
     private function saveImage(Request $req): string
     {
-        $file     = $req->file('image');
-        $filename = time() . '-' . $file->getClientOriginalName();
+        $file = $req->file('image');
+        $filename = time().'-'.$file->getClientOriginalName();
         $file->move(public_path('image'), $filename);
-        return 'image/' . $filename;
+
+        return 'image/'.$filename;
     }
 }

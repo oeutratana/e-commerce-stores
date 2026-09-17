@@ -25,8 +25,8 @@ class ReviewController extends Controller
     {
         $validator = Validator::make($req->all(), [
             'product_id' => 'required|exists:products,id',
-            'rating'     => 'required|integer|min:1|max:5',
-            'comment'    => 'nullable|string',
+            'rating' => 'required|integer|min:1|max:5',
+            'comment' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -34,10 +34,10 @@ class ReviewController extends Controller
         }
 
         $review = Review::create([
-            'user_id'    => $req->user()->id,
+            'user_id' => $req->user()->id,
             'product_id' => $req->product_id,
-            'rating'     => $req->rating,
-            'comment'    => $req->comment,
+            'rating' => $req->rating,
+            'comment' => $req->comment,
         ]);
 
         return apiResponse($review->load(['user', 'product']), 201, 'Review added successfully.');
@@ -49,7 +49,7 @@ class ReviewController extends Controller
         $review = Review::where('id', $id)->where('user_id', $req->user()->id)->firstOrFail();
 
         $validator = Validator::make($req->all(), [
-            'rating'  => 'sometimes|required|integer|min:1|max:5',
+            'rating' => 'sometimes|required|integer|min:1|max:5',
             'comment' => 'nullable|string',
         ]);
 
@@ -58,6 +58,7 @@ class ReviewController extends Controller
         }
 
         $review->update($validator->validated());
+
         return apiResponse($review->load(['user', 'product']), 200, 'Review updated successfully.');
     }
 
@@ -66,6 +67,7 @@ class ReviewController extends Controller
     {
         $review = Review::where('id', $id)->where('user_id', $req->user()->id)->firstOrFail();
         $review->delete();
+
         return apiResponse(null, 200, 'Review deleted successfully.');
     }
 }

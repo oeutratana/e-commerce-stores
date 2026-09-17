@@ -32,7 +32,7 @@ class CartController extends Controller
 
         $validator = Validator::make($req->all(), [
             'product_id' => 'required|exists:products,id',
-            'quantity'   => 'required|integer|min:1',
+            'quantity' => 'required|integer|min:1',
         ]);
 
         if ($validator->fails()) {
@@ -55,9 +55,9 @@ class CartController extends Controller
         }
 
         $cart = Cart::create([
-            'user_id'    => $req->user()->id,
+            'user_id' => $req->user()->id,
             'product_id' => $data['product_id'],
-            'quantity'   => $data['quantity'],
+            'quantity' => $data['quantity'],
         ]);
 
         return apiResponse($cart->load('product'), 201, 'Added to cart successfully.');
@@ -91,7 +91,7 @@ class CartController extends Controller
     private function normalizeProductIdField(Request $req): void
     {
         foreach (['productId', 'product'] as $key) {
-            if (!$req->filled('product_id') && $req->filled($key)) {
+            if (! $req->filled('product_id') && $req->filled($key)) {
                 $req->merge(['product_id' => $req->input($key)]);
             }
         }

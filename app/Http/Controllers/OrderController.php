@@ -14,6 +14,7 @@ class OrderController extends Controller
         $orders = Order::with(['user', 'items.product', 'payment'])
             ->where('user_id', $req->user()->id)
             ->get();
+
         return apiResponse($orders, 200, 'Get orders successfully.');
     }
 
@@ -24,6 +25,7 @@ class OrderController extends Controller
             ->where('id', $id)
             ->where('user_id', $req->user()->id)
             ->firstOrFail();
+
         return apiResponse($order, 200, 'Get order successfully.');
     }
 
@@ -32,7 +34,7 @@ class OrderController extends Controller
     {
         $validator = Validator::make($req->all(), [
             'total_price' => 'required|numeric|min:0',
-            'status'      => 'nullable|string|in:pending,processing,shipped,delivered,cancelled',
+            'status' => 'nullable|string|in:pending,processing,shipped,delivered,cancelled',
         ]);
 
         if ($validator->fails()) {
@@ -40,9 +42,9 @@ class OrderController extends Controller
         }
 
         $order = Order::create([
-            'user_id'     => $req->user()->id,
+            'user_id' => $req->user()->id,
             'total_price' => $req->total_price,
-            'status'      => $req->status ?? 'pending',
+            'status' => $req->status ?? 'pending',
         ]);
 
         return apiResponse($order->load(['items.product', 'payment']), 201, 'Order created successfully.');
@@ -55,7 +57,7 @@ class OrderController extends Controller
 
         $validator = Validator::make($req->all(), [
             'total_price' => 'sometimes|required|numeric|min:0',
-            'status'      => 'sometimes|required|string|in:pending,processing,shipped,delivered,cancelled',
+            'status' => 'sometimes|required|string|in:pending,processing,shipped,delivered,cancelled',
         ]);
 
         if ($validator->fails()) {
@@ -63,6 +65,7 @@ class OrderController extends Controller
         }
 
         $order->update($validator->validated());
+
         return apiResponse($order->load(['items.product', 'payment']), 200, 'Order updated successfully.');
     }
 
@@ -71,6 +74,7 @@ class OrderController extends Controller
     {
         $order = Order::where('id', $id)->where('user_id', $req->user()->id)->firstOrFail();
         $order->delete();
+
         return apiResponse(null, 200, 'Order deleted successfully.');
     }
 }
